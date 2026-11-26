@@ -12,8 +12,10 @@ if (!isset($_SESSION['id']) || $_SESSION['role'] !== 'admin') {
 if (isset($_POST['update_role'])) {
     $user_id = intval($_POST['user_id']);
     $new_role = $_POST['role'];
-    $sql = "UPDATE users SET role='$new_role' WHERE id=$user_id";
-    mysqli_query($conn, $sql);
+    // Use prepared statement to prevent SQL injection
+    $stmt = $conn->prepare("UPDATE users SET role = ? WHERE id = ?");
+    $stmt->bind_param("si", $new_role, $user_id);
+    $stmt->execute();
     header("Location: manage_users.php");
     exit();
 }
@@ -21,8 +23,10 @@ if (isset($_POST['update_role'])) {
 // Handle delete user
 if (isset($_POST['delete_user'])) {
     $user_id = intval($_POST['user_id']);
-    $sql = "DELETE FROM users WHERE id=$user_id";
-    mysqli_query($conn, $sql);
+    // Use prepared statement to prevent SQL injection
+    $stmt = $conn->prepare("DELETE FROM users WHERE id = ?");
+    $stmt->bind_param("i", $user_id);
+    $stmt->execute();
     header("Location: manage_users.php");
     exit();
 }

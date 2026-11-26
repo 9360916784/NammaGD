@@ -70,11 +70,11 @@ if (isset($_POST['update'])) {
     </div>
     <div class="mb-3">
       <label class="form-label">Grammar Score</label>
-      <input type="number" name="grammar_score" class="form-control" value="<?= $feedback['grammar_score'] ?>" required>
+      <input type="number" name="grammar_score" class="form-control" value="<?= $feedback['grammar_score'] ?>" min="0" max="100" required>
     </div>
     <div class="mb-3">
       <label class="form-label">Sentiment Score</label>
-      <input type="number" name="sentiment_score" class="form-control" value="<?= $feedback['sentiment_score'] ?>" required>
+      <input type="number" name="sentiment_score" class="form-control" value="<?= $feedback['sentiment_score'] ?>" min="0" max="100" required>
     </div>
     <div class="mb-3">
       <label class="form-label">Speaking Time (sec)</label>
