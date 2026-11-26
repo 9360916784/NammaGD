@@ -23,10 +23,16 @@ if (!isset($_SESSION['id'])) {
 </head>
 <body>
 
-<!-- Navbar -->
 <nav class="navbar navbar-expand-lg navbar-dark bg-dark">
-    <div class="container-fluid">
-        <a class="navbar-brand" href="#"><i class="bi bi-chat"></i> Namma GD</a>
+    <div class="container-fluid position-relative">
+        
+        <a class="navbar-brand" href="dashboard.php"><i class="bi bi-chat"></i> Namma GD</a>
+        
+        <a href="dashboard.php" class="btn btn-danger btn-sm shadow-sm" 
+           style="position: absolute; top: 50px; left: 10px; z-index: 1050; font-size: 0.75rem; padding: 2px 10px;">
+            <i class="bi bi-arrow-left"></i> Back
+        </a>
+
         <button class="navbar-toggler" type="button" data-bs-toggle="collapse" 
             data-bs-target="#navbarNav" aria-controls="navbarNav" aria-expanded="false" 
             aria-label="Toggle navigation">
@@ -44,14 +50,12 @@ if (!isset($_SESSION['id'])) {
     </div>
 </nav>
 
-<!-- Page Header -->
 <div class="container my-5">
     <h1 class="text-center mb-4">Learning Module</h1>
     <p class="text-center text-muted">Access GD preparation resources: videos, articles, and quizzes.</p>
 
     <div class="row g-4">
 
-        <!-- Quiz -->
         <div class="col-md-4">
             <div class="card shadow-sm h-100">
                 <img src="images/quiz_img.png" class="card-img-top" alt="Quiz">
@@ -63,7 +67,6 @@ if (!isset($_SESSION['id'])) {
             </div>
         </div>
 
-        <!-- Article (Confident Speaking) -->
         <div class="col-md-4">
             <div class="card shadow-sm h-100">
                 <img src="images/confident_speaker.png" class="card-img-top" alt="Article">
@@ -75,7 +78,6 @@ if (!isset($_SESSION['id'])) {
             </div>
         </div>
 
-        <!-- GD Videos -->
         <div class="col-md-4">
             <div class="card shadow-sm h-100">
                 <img src="images/gd-signature.png" class="card-img-top" alt="Video">

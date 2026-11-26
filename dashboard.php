@@ -4,6 +4,56 @@ if (!isset($_SESSION['id'])) {
     header("Location: login.php");
     exit();
 }
+
+include "connection.php";
+
+$user_id = $_SESSION['id'];
+
+// --- 1. Total GD Sessions ---
+$total_sql = "SELECT COUNT(*) as count FROM gd_feedback WHERE user_id = $user_id";
+$total_res = mysqli_query($conn, $total_sql);
+$total_sessions = mysqli_fetch_assoc($total_res)['count'] ?? 0;
+
+// --- 2. Average Confidence (Based on Sentiment Score) ---
+$avg_sql = "SELECT AVG(sentiment_score) as avg_score FROM gd_feedback WHERE user_id = $user_id";
+$avg_res = mysqli_query($conn, $avg_sql);
+$avg_row = mysqli_fetch_assoc($avg_res);
+$avg_confidence = round($avg_row['avg_score'] ?? 0);
+
+// --- 3. Improvement Rate (Last Session vs First Session) ---
+$improvement_rate = 0;
+$improvement_class = "text-muted"; // Default color
+$improvement_sign = "";
+
+if ($total_sessions > 1) {
+    // Get First Session Score
+    $first_sql = "SELECT grammar_score, sentiment_score FROM gd_feedback WHERE user_id = $user_id ORDER BY session_date ASC LIMIT 1";
+    $first_res = mysqli_query($conn, $first_sql);
+    $first_row = mysqli_fetch_assoc($first_res);
+    $first_total = $first_row['grammar_score'] + $first_row['sentiment_score'];
+
+    // Get Last Session Score
+    $last_sql = "SELECT grammar_score, sentiment_score FROM gd_feedback WHERE user_id = $user_id ORDER BY session_date DESC LIMIT 1";
+    $last_res = mysqli_query($conn, $last_sql);
+    $last_row = mysqli_fetch_assoc($last_res);
+    $last_total = $last_row['grammar_score'] + $last_row['sentiment_score'];
+
+    // Calculate Percentage Change
+    if ($first_total > 0) {
+        $improvement_rate = round((($last_total - $first_total) / $first_total) * 100, 1);
+    }
+
+    // Determine Color and Sign
+    if ($improvement_rate > 0) {
+        $improvement_class = "text-success"; // Green
+        $improvement_sign = "+";
+    } elseif ($improvement_rate < 0) {
+        $improvement_class = "text-danger"; // Red
+        $improvement_sign = ""; // Negative sign comes automatically
+    } else {
+        $improvement_class = "text-warning"; // Yellow/Orange
+    }
+}
 ?>
 
 <!DOCTYPE html>
@@ -17,7 +67,6 @@ if (!isset($_SESSION['id'])) {
 </head>
 
 <body>
-    <!-- Navbar -->
     <nav class="navbar navbar-expand-lg navbar-dark bg-dark">
         <div class="container-fluid">
             <a class="navbar-brand" href="#"><i class="bi bi-chat"></i> Namma GD</a>
@@ -28,7 +77,7 @@ if (!isset($_SESSION['id'])) {
             </button>
             <div class="collapse navbar-collapse" id="navbarNav">
                 <ul class="navbar-nav ms-auto">
-                    <li class="nav-item"><a class="nav-link" href="dashboard.php">Dashboard</a></li>
+                    <li class="nav-item"><a class="nav-link active" href="dashboard.php">Dashboard</a></li>
                     <li class="nav-item"><a class="nav-link" href="learning.php">Learning Module</a></li>
                     <li class="nav-item"><a class="nav-link" href="practice.php">Practice GD</a></li>
                     <li class="nav-item"><a class="nav-link" href="feedback.php">My Feedback</a></li>
@@ -38,13 +87,11 @@ if (!isset($_SESSION['id'])) {
         </div>
     </nav>
 
-    <!-- Dashboard Content -->
     <div class="container my-5">
-        <h1 class="text-center mb-4">Welcome, <?php echo $_SESSION['username']; ?> 👋</h1>
+        <h1 class="text-center mb-4">Welcome, <?php echo htmlspecialchars($_SESSION['username']); ?> 👋</h1>
         <p class="text-center text-muted">Your AI-powered group discussion training hub</p>
 
         <div class="row g-4 mt-4">
-            <!-- Learning Module -->
             <div class="col-md-4">
                 <div class="card shadow-sm h-100 text-center">
                     <div class="card-body">
@@ -56,7 +103,6 @@ if (!isset($_SESSION['id'])) {
                 </div>
             </div>
 
-            <!-- Practice GD -->
             <div class="col-md-4">
                 <div class="card shadow-sm h-100 text-center">
                     <div class="card-body">
@@ -68,7 +114,6 @@ if (!isset($_SESSION['id'])) {
                 </div>
             </div>
 
-            <!-- Feedback -->
             <div class="col-md-4">
                 <div class="card shadow-sm h-100 text-center">
                     <div class="card-body">
@@ -81,29 +126,33 @@ if (!isset($_SESSION['id'])) {
             </div>
         </div>
 
-        <!-- Quick Stats -->
         <div class="row g-4 mt-5">
             <div class="col-md-4">
-                <div class="card text-center border-primary">
+                <div class="card text-center border-primary shadow-sm">
                     <div class="card-body">
                         <h5>Total GD Sessions</h5>
-                        <p class="display-6 text-primary fw-bold">5</p>
+                        <p class="display-6 text-primary fw-bold"><?php echo $total_sessions; ?></p>
+                        <small class="text-muted">Completed Sessions</small>
                     </div>
                 </div>
             </div>
             <div class="col-md-4">
-                <div class="card text-center border-success">
+                <div class="card text-center border-success shadow-sm">
                     <div class="card-body">
                         <h5>Average Confidence</h5>
-                        <p class="display-6 text-success fw-bold">78%</p>
+                        <p class="display-6 text-success fw-bold"><?php echo $avg_confidence; ?>%</p>
+                        <small class="text-muted">Based on AI Sentiment Analysis</small>
                     </div>
                 </div>
             </div>
             <div class="col-md-4">
-                <div class="card text-center border-warning">
+                <div class="card text-center border-warning shadow-sm">
                     <div class="card-body">
                         <h5>Improvement Rate</h5>
-                        <p class="display-6 text-warning fw-bold">+15%</p>
+                        <p class="display-6 fw-bold <?php echo $improvement_class; ?>">
+                            <?php echo $improvement_sign . $improvement_rate; ?>%
+                        </p>
+                        <small class="text-muted">Progress since first session</small>
                     </div>
                 </div>
             </div>

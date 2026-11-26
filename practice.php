@@ -1,375 +1,499 @@
 <?php
 session_start();
+include "connection.php";
+
 if (!isset($_SESSION['id'])) {
     header("Location: login.php");
     exit();
 }
 
-include "connection.php";
+$user_id = $_SESSION['id'];
+$room_id = 0;
+$gd_topic = "";
+$is_host = false;
 
-// Fetch random GD topic
-$topic_sql = "SELECT topic FROM gd_topics ORDER BY RAND() LIMIT 1";
-$topic_result = mysqli_query($conn, $topic_sql);
-$topic_row = mysqli_fetch_assoc($topic_result);
-$gd_topic = $topic_row['topic'] ?? "No topics available. Please add topics in admin panel.";
-$_SESSION['gd_topic'] = $gd_topic;
+// 1. CHECK IF USER IS ALREADY IN A SESSION
+if (isset($_SESSION['current_room_id'])) {
+    $room_id = $_SESSION['current_room_id'];
+    $check_sql = "SELECT topic, host_id FROM active_gd_rooms WHERE id = $room_id AND status='active'";
+    $check_res = mysqli_query($conn, $check_sql);
+    
+    if (mysqli_num_rows($check_res) > 0) {
+        $row = mysqli_fetch_assoc($check_res);
+        $gd_topic = $row['topic'];
+        // Check if current user is the host
+        if($row['host_id'] == $user_id) $is_host = true;
+    } else {
+        unset($_SESSION['current_room_id']);
+    }
+}
+
+// 2. ASSIGN NEW ROOM IF NOT IN ONE
+if (!isset($_SESSION['current_room_id'])) {
+    // Try to join existing room
+    $find_sql = "SELECT * FROM active_gd_rooms WHERE participants < 6 AND status='active' ORDER BY created_at DESC LIMIT 1";
+    $find_res = mysqli_query($conn, $find_sql);
+
+    if (mysqli_num_rows($find_res) > 0) {
+        $room = mysqli_fetch_assoc($find_res);
+        $room_id = $room['id'];
+        $gd_topic = $room['topic'];
+        mysqli_query($conn, "UPDATE active_gd_rooms SET participants = participants + 1 WHERE id = $room_id");
+        
+        // Failsafe: If room has no host, make this user host
+        if(empty($room['host_id'])) {
+            mysqli_query($conn, "UPDATE active_gd_rooms SET host_id = $user_id WHERE id = $room_id");
+            $is_host = true;
+        }
+    } else {
+        // Create new room (User becomes Host)
+        $topic_sql = "SELECT topic FROM gd_topics ORDER BY RAND() LIMIT 1";
+        $topic_res = mysqli_query($conn, $topic_sql);
+        $topic_row = mysqli_fetch_assoc($topic_res);
+        $gd_topic = $topic_row['topic'] ?? "General Discussion";
+
+        $stmt = $conn->prepare("INSERT INTO active_gd_rooms (topic, participants, status, host_id) VALUES (?, 1, 'active', ?)");
+        $stmt->bind_param("si", $gd_topic, $user_id);
+        $stmt->execute();
+        $room_id = $stmt->insert_id;
+        $is_host = true;
+    }
+    $_SESSION['current_room_id'] = $room_id;
+}
 ?>
 <!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Practice GD - Namma GD</title>
+  <title>Practice GD - Room #<?php echo $room_id; ?></title>
   <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.2/font/bootstrap-icons.css">
   <style>
-    video { width: 100%; height: auto; background: black; border-radius:8px; }
-    #video-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 10px; }
-    #transcript { font-family: monospace; white-space: pre-wrap; }
-    .highlight-filler { color: red; font-weight: bold; }
-    .highlight-positive { color: green; font-weight: bold; }
-    .highlight-grammar { background-color: yellow; }
-    #feedback-box { display: none; margin-top: 20px; }
-    .transcript-block { background: #f8f9fa; padding: 10px; border-radius: 8px; margin-bottom: 10px; font-family: monospace; }
+    /* Dynamic Video Grid */
+    #video-grid {
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: center;
+      align-items: center;
+      gap: 20px;
+      padding: 20px;
+      min-height: 60vh;
+    }
+    .video-wrapper {
+      position: relative;
+      flex: 1 1 400px;
+      aspect-ratio: 16/9;
+      max-width: 90%;
+      background: #000;
+      border-radius: 15px;
+      overflow: hidden;
+      box-shadow: 0 8px 20px rgba(0,0,0,0.3);
+      border: 2px solid #444;
+    }
+    #video-grid:has(> .video-wrapper:only-child) .video-wrapper {
+        flex: 0 0 70%;
+        max-height: 70vh;
+    }
+    video {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      transform: scaleX(-1);
+    }
+    .video-label {
+        position: absolute; bottom: 15px; left: 15px;
+        background: rgba(0,0,0,0.6); color: white;
+        padding: 5px 12px; border-radius: 20px; font-size: 0.9rem;
+    }
+    
+    /* Transcript & Feedback Styles */
+    .transcript-box {
+      height: 250px;
+      overflow-y: auto;
+      background: #f8f9fa;
+      border: 1px solid #dee2e6;
+      font-size: 0.95rem;
+    }
+    .feedback-text-box {
+        font-size: 0.85rem; padding: 10px; border-radius: 5px; margin-bottom: 8px; border: 1px solid #ddd;
+    }
+    .bg-original { background-color: #f8f9fa; color: #666; }
+    .bg-corrected { background-color: #d1e7dd; color: #0f5132; border-color: #badbcc; }
+    .bg-polite { background-color: #cfe2ff; color: #084298; border-color: #b6d4fe; }
+    
+    #timer-badge { font-size: 1.2rem; font-weight: bold; min-width: 100px; text-align: center; }
   </style>
 </head>
 <body>
 
-<!-- Navbar -->
 <nav class="navbar navbar-expand-lg navbar-dark bg-dark">
   <div class="container-fluid">
-    <a class="navbar-brand" href="#"><i class="bi bi-chat"></i> Namma GD</a>
-    <div class="collapse navbar-collapse">
-      <ul class="navbar-nav ms-auto">
-        <li class="nav-item"><a class="nav-link" href="dashboard.php">Dashboard</a></li>
-        <li class="nav-item"><a class="nav-link" href="learning.php">Learning Module</a></li>
-        <li class="nav-item"><a class="nav-link active" href="practice.php">Practice GD</a></li>
-        <li class="nav-item"><a class="nav-link" href="feedback.php">My Feedback</a></li>
-        <li class="nav-item"><a class="nav-link" href="logout.php">Logout</a></li>
-      </ul>
+    <a class="navbar-brand" href="#"><i class="bi bi-chat-dots"></i> Namma GD</a>
+    
+    <div class="ms-auto text-white d-flex align-items-center">
+        <span id="timer-badge" class="badge bg-warning text-dark me-3" style="display:none;">15:00</span>
+
+        <span class="me-3 d-none d-md-block">
+            Room ID: <strong><?php echo $room_id; ?></strong> | 
+            Topic: <strong><?php echo htmlspecialchars($gd_topic); ?></strong>
+        </span>
+        <a href="dashboard.php" class="btn btn-danger btn-sm fw-bold">
+            <i class="bi bi-box-arrow-left"></i> Exit
+        </a>
     </div>
   </div>
 </nav>
 
-<!-- Topic -->
-<div class="container my-4">
-  <h2 class="text-center">Today's GD Topic</h2>
-  <div class="alert alert-info text-center fs-5">
-    <?php echo htmlspecialchars($gd_topic); ?>
+<div class="container-fluid mt-3">
+  <div class="row">
+    <div class="col-lg-9">
+        <div id="video-grid"></div>
+        
+        <div class="text-center mt-3 mb-4">
+            <button id="join-btn" class="btn btn-primary px-4 btn-lg"><i class="bi bi-camera-video"></i> Join Room</button>
+            
+            <?php if($is_host): ?>
+                <button id="start-gd-btn" class="btn btn-success px-4 btn-lg" style="display:none;" disabled>
+                    <i class="bi bi-play-circle"></i> Start GD Session
+                </button>
+            <?php else: ?>
+                <button id="waiting-msg" class="btn btn-secondary px-4 btn-lg" style="display:none;" disabled>
+                    <i class="bi bi-hourglass-split"></i> Waiting for Host to Start...
+                </button>
+            <?php endif; ?>
+
+            <button id="leave-btn" class="btn btn-danger px-4 btn-lg" style="display:none;"><i class="bi bi-stop-circle"></i> End Session & Get Feedback</button>
+        </div>
+    </div>
+
+    <div class="col-lg-3">
+        <div class="card shadow-sm h-100">
+            <div class="card-header bg-primary text-white">
+                <i class="bi bi-mic"></i> Your Live Transcript
+            </div>
+            <div class="card-body p-0">
+                <div id="transcript" class="transcript-box p-3">
+                    <em class="text-muted">Join the room to enable microphone. Transcript starts when the Host starts the GD.</em>
+                </div>
+            </div>
+            
+            <div class="card-footer" id="feedback-area" style="display:none; overflow-y:auto; max-height: 600px;">
+                <h6 class="border-bottom pb-2"><i class="bi bi-robot"></i> AI Analysis</h6>
+                
+                <div class="d-flex justify-content-between mb-3">
+                    <span class="badge bg-info text-dark p-2">Grammar: <span id="grammar-score">-</span>%</span>
+                    <span class="badge bg-warning text-dark p-2">Sentiment: <span id="sentiment-score">-</span>%</span>
+                </div>
+
+                <strong>Original:</strong> <div id="disp-original" class="feedback-text-box bg-original"></div>
+                <strong>Corrected:</strong> <div id="disp-corrected" class="feedback-text-box bg-corrected"></div>
+                <strong>Polite Version:</strong> <div id="disp-polite" class="feedback-text-box bg-polite"></div>
+                <strong class="text-danger">Tips:</strong> <div class="mt-1 small" id="ai-tips"></div>
+            </div>
+        </div>
+    </div>
   </div>
 </div>
 
-<!-- Video -->
-<div class="container">
-  <div id="video-grid"></div>
-</div>
-
-<!-- Transcript -->
-<div class="container mt-3">
-  <h4>Live Transcript</h4>
-  <div id="transcript" class="form-control p-3" style="min-height:150px; overflow-y:auto;"></div>
-</div>
-
-<!-- Feedback -->
-<div class="container mt-4" id="feedback-box">
-  <h4>AI Feedback</h4>
-  <div class="card p-3 shadow-sm">
-    <p><strong>Grammar Score:</strong> <span id="grammar-score"></span></p>
-    <p><strong>Sentiment Score:</strong> <span id="sentiment-score"></span></p>
-    <p><strong>Speaking Time:</strong> <span id="speaking-time"></span> sec</p>
-
-    <h5>Transcript Comparison</h5>
-    <div class="transcript-block"><strong>Original:</strong><br><span id="original-text"></span></div>
-    <div class="transcript-block"><strong>Corrected:</strong><br><span id="corrected-text"></span></div>
-    <div class="transcript-block"><strong>Polite Recommended:</strong><br><span id="polite-text"></span></div>
-
-    <h5>Improvement Tips</h5>
-    <ul id="improvement-tips"></ul>
-  </div>
-</div>
-
-<!-- Controls -->
-<div class="container text-center mt-3">
-  <button id="start-btn" class="btn btn-success"><i class="bi bi-camera-video"></i> Start GD</button>
-  <button id="stop-btn" class="btn btn-danger" disabled><i class="bi bi-stop-circle"></i> End GD</button>
-</div>
-
-<footer class="bg-dark text-light py-3 text-center mt-4">
-  <p class="mb-0">&copy; <?php echo date('Y'); ?> Namma GD | AI-Powered Group Discussion Platform</p>
-</footer>
-
-<!-- Socket.IO client + Gemini -->
 <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
 <script type="module">
 import { GoogleGenerativeAI } from "https://esm.run/@google/generative-ai";
 
-// --- CONFIG ---
-// Replace this with your deployed Render/Glitch/Ngrok URL (without trailing slash)
-const SIGNALING_SERVER_URL = "https://nammagd-hosting.onrender.com"; // <-- REPLACE
-const API_KEY = "AIzaSyDDKrioKsUFVLPz-R4RLpBV7uyBnZa7bAU";
+// --- CONFIGURATION ---
+const SIGNALING_SERVER_URL = "http://10.114.139.63:3000"; // Ensure this matches your server IP
+const API_KEY = "AIzaSyBix7HplD3rqnUOkuawaNvjFTA99nA6GXM"; 
 const ai = new GoogleGenerativeAI(API_KEY);
 
-// --- DOM ---
+const ROOM_ID = "room_<?php echo $room_id; ?>"; 
+const ROOM_DB_ID = "<?php echo $room_id; ?>";
+const TOPIC = "<?php echo addslashes($gd_topic); ?>";
+const IS_HOST = <?php echo $is_host ? 'true' : 'false'; ?>;
+
+// DOM Elements
 const videoGrid = document.getElementById('video-grid');
-const startBtn = document.getElementById('start-btn');
-const stopBtn = document.getElementById('stop-btn');
+const joinBtn = document.getElementById('join-btn');
+const startGDBtn = document.getElementById('start-gd-btn');
+const waitingMsg = document.getElementById('waiting-msg');
+const leaveBtn = document.getElementById('leave-btn');
 const transcriptBox = document.getElementById('transcript');
+const timerBadge = document.getElementById('timer-badge');
 
-let localStream = null;
-let recognition = null;
+let localStream;
+let recognition;
 let finalTranscript = "";
-let socket = null;
-const peers = {}; // RTCPeerConnections by socketId
-const remoteVideos = {}; // video elements by socketId
+let socket;
+let timerInterval;
+const peers = {}; 
 
-// STUN servers help with NAT traversal
-const RTC_CONFIG = {
-  iceServers: [
-    { urls: "stun:stun.l.google.com:19302" },
-    { urls: "stun:global.stun.twilio.com:3478?transport=udp" }
-  ]
-};
+const RTC_CONFIG = { iceServers: [{ urls: "stun:stun.l.google.com:19302" }] };
 
-// highlight function (unchanged)
-function highlightText(text) {
-  return text
-    .replace(/\b(uh|um)\b/gi, '<span class="highlight-filler">$1</span>')
-    .replace(/\b(good|excellent|great|well done)\b/gi, '<span class="highlight-positive">$1</span>')
-    .replace(/\b(is are|was were)\b/gi, '<span class="highlight-grammar">$1</span>');
+// --- 1. JOIN ROOM FUNCTION ---
+joinBtn.addEventListener('click', async () => {
+    try {
+        // Get Camera Permission
+        localStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+        addVideoStream(localStream, true, 'You');
+        
+        joinBtn.style.display = 'none';
+        
+        // Show controls depending on role
+        if(IS_HOST) {
+            if(startGDBtn) {
+                startGDBtn.style.display = 'inline-block';
+                startGDBtn.disabled = false;
+            }
+        } else {
+            if(waitingMsg) {
+                waitingMsg.style.display = 'inline-block';
+            }
+        }
+
+        // Connect to Socket Server
+        socket = io(SIGNALING_SERVER_URL, { transports: ["websocket"] });
+        
+        socket.on("connect", () => {
+            socket.emit("join-room", ROOM_ID);
+        });
+
+        // WebRTC Events
+        socket.on("user-connected", userId => connectToNewUser(userId, localStream));
+        socket.on("offer", async (offer, userId) => handleOffer(offer, userId));
+        socket.on("answer", async (answer, userId) => { if(peers[userId]) await peers[userId].setRemoteDescription(answer); });
+        socket.on("candidate", async (candidate, userId) => { if(peers[userId]) await peers[userId].addIceCandidate(candidate); });
+        socket.on("user-disconnected", userId => { 
+            if(peers[userId]) peers[userId].close(); 
+            const el = document.getElementById(userId);
+            if(el) el.remove();
+        });
+
+        // --- LISTENER: START GD COMMAND ---
+        // This runs for EVERYONE when the host clicks start
+        socket.on("start-timer", () => {
+            console.log("GD Started!");
+            
+            // Hide waiting/start buttons
+            if(waitingMsg) waitingMsg.style.display = 'none';
+            if(startGDBtn) startGDBtn.style.display = 'none';
+            
+            // Show leave button
+            leaveBtn.style.display = 'inline-block';
+            
+            // Start features
+            startTimer(15 * 60); 
+            startRecognition(); // Transcript ONLY starts here
+        });
+
+    } catch (e) {
+        console.error(e);
+        alert("Camera Access Denied or Server Error. Check console.");
+    }
+});
+
+// --- 2. HOST STARTS GD ---
+if(startGDBtn) {
+    startGDBtn.addEventListener('click', () => {
+        if(socket) {
+            // Send signal to server to start for everyone
+            socket.emit("start-signal", ROOM_ID); 
+        }
+    });
 }
 
-// attach stream to video element
-function addVideoStreamEl(stream, muted=false, id=null) {
-  const video = document.createElement('video');
-  video.autoplay = true;
-  video.playsInline = true;
-  video.srcObject = stream;
-  video.muted = muted;
-  video.addEventListener('loadedmetadata', () => video.play());
-  if (id) {
-    // tag video
-    video.dataset.peer = id;
-    remoteVideos[id] = video;
-  }
-  videoGrid.appendChild(video);
-  return video;
+// --- 3. TIMER ---
+function startTimer(duration) {
+    timerBadge.style.display = 'inline-block';
+    transcriptBox.innerText = ""; // Clear placeholder text
+    
+    let timer = duration, minutes, seconds;
+    timerInterval = setInterval(() => {
+        minutes = parseInt(timer / 60, 10);
+        seconds = parseInt(timer % 60, 10);
+
+        minutes = minutes < 10 ? "0" + minutes : minutes;
+        seconds = seconds < 10 ? "0" + seconds : seconds;
+
+        timerBadge.textContent = minutes + ":" + seconds;
+
+        if (--timer < 0) {
+            clearInterval(timerInterval);
+            timerBadge.textContent = "Times Up!";
+            stopGD(); // Auto-stop
+        }
+    }, 1000);
 }
 
-// create RTCPeerConnection and attach handlers
-function createPeerConnection(remoteId) {
-  const pc = new RTCPeerConnection(RTC_CONFIG);
-
-  // add local tracks
-  if (localStream) {
+// --- 4. WebRTC Helpers ---
+function createPeer(userId) {
+    const pc = new RTCPeerConnection(RTC_CONFIG);
+    peers[userId] = pc;
     localStream.getTracks().forEach(track => pc.addTrack(track, localStream));
-  }
-
-  // when remote track arrives
-  pc.ontrack = (e) => {
-    // e.streams[0] is the remote MediaStream
-    if (!remoteVideos[remoteId]) {
-      addVideoStreamEl(e.streams[0], false, remoteId);
-    }
-  };
-
-  // ICE candidate -> send to other peer via signaling
-  pc.onicecandidate = (event) => {
-    if (event.candidate) {
-      socket.emit("candidate", event.candidate, remoteId);
-    }
-  };
-
-  return pc;
+    pc.ontrack = event => { if(!document.getElementById(userId)) addVideoStream(event.streams[0], false, userId); };
+    pc.onicecandidate = event => { if(event.candidate) socket.emit("candidate", event.candidate, userId); };
+    return pc;
 }
 
-// Start GD (join room & set up signaling)
-startBtn.addEventListener('click', async () => {
-  startBtn.disabled = true;
-  stopBtn.disabled = false;
+function connectToNewUser(userId, stream) {
+    const pc = createPeer(userId);
+    pc.createOffer().then(offer => {
+        pc.setLocalDescription(offer);
+        socket.emit("offer", offer, userId);
+    });
+}
 
-  // get media
-  try {
-    localStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
-  } catch (err) {
-    alert("Camera/microphone access denied.");
-    startBtn.disabled = false;
-    stopBtn.disabled = true;
-    return;
-  }
-
-  // show local video (muted)
-  addVideoStreamEl(localStream, true, "local");
-
-  // connect to signaling server
-  socket = io(SIGNALING_SERVER_URL, { transports: ["websocket"] });
-
-  // join a room — using a simple room name derived from topic (safe)
-  const ROOM = "gd_room_" + encodeURIComponent("<?php echo addslashes($gd_topic); ?>").slice(0,50);
-
-  socket.on("connect", () => {
-    console.log("connected to signaling server:", socket.id);
-    socket.emit("join-room", ROOM);
-  });
-
-  // someone connected -> we should create peer connection and offer
-  socket.on("user-connected", async (id) => {
-    console.log("user-connected", id);
-    // create peer
-    const pc = createPeerConnection(id);
-    peers[id] = pc;
-
-    // create offer
-    const offer = await pc.createOffer();
-    await pc.setLocalDescription(offer);
-
-    // send to remote
-    socket.emit("offer", offer, id);
-  });
-
-  // when receiving an offer
-  socket.on("offer", async (offer, fromId) => {
-    console.log("offer from", fromId);
-    const pc = createPeerConnection(fromId);
-    peers[fromId] = pc;
+async function handleOffer(offer, userId) {
+    const pc = createPeer(userId);
     await pc.setRemoteDescription(offer);
     const answer = await pc.createAnswer();
     await pc.setLocalDescription(answer);
-    socket.emit("answer", answer, fromId);
-  });
+    socket.emit("answer", answer, userId);
+}
 
-  // when receiving an answer
-  socket.on("answer", async (answer, fromId) => {
-    console.log("answer from", fromId);
-    const pc = peers[fromId];
-    if (pc) {
-      await pc.setRemoteDescription(answer);
+function addVideoStream(stream, muted, id) {
+    const div = document.createElement('div');
+    div.id = id;
+    div.className = "video-wrapper";
+    const video = document.createElement('video');
+    video.srcObject = stream;
+    video.muted = muted;
+    video.autoplay = true;
+    const label = document.createElement('span');
+    label.className = "video-label";
+    label.innerText = id === 'You' ? 'You' : 'Participant';
+    div.appendChild(video);
+    div.appendChild(label);
+    videoGrid.appendChild(div);
+}
+
+// --- 5. SPEECH RECOGNITION (Only runs after Start) ---
+function startRecognition() {
+    if (!('webkitSpeechRecognition' in window) && !('SpeechRecognition' in window)) {
+        transcriptBox.innerText = "Speech Recognition not supported in this browser.";
+        return;
     }
-  });
+    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+    recognition = new SpeechRecognition();
+    recognition.lang = 'en-US';
+    recognition.continuous = true;
+    recognition.interimResults = true;
 
-  // ICE candidates
-  socket.on("candidate", async (candidate, fromId) => {
-    const pc = peers[fromId];
-    if (pc && candidate) {
-      try {
-        await pc.addIceCandidate(candidate);
-      } catch (e) {
-        console.warn("Error adding candidate", e);
-      }
+    recognition.onresult = (event) => {
+        let interim = '';
+        for (let i = event.resultIndex; i < event.results.length; ++i) {
+            if (event.results[i].isFinal) finalTranscript += event.results[i][0].transcript + ' ';
+            else interim += event.results[i][0].transcript;
+        }
+        transcriptBox.innerText = finalTranscript + interim;
+    };
+    recognition.start();
+}
+
+// --- 6. LEAVE & ANALYZE ---
+function stopGD() {
+    leaveBtn.click();
+}
+
+leaveBtn.addEventListener('click', async () => {
+    leaveBtn.disabled = true;
+    clearInterval(timerInterval);
+    leaveRoom(); // Updates DB count
+    
+    // Stop services
+    if(recognition) recognition.stop();
+    if(socket) socket.disconnect();
+    if(localStream) localStream.getTracks().forEach(t => t.stop());
+    
+    // Capture Text (Fix for "Analysis Failed" on empty)
+    const speechText = transcriptBox.innerText.trim();
+    
+    if (speechText.length < 5 || speechText === "Transcript will appear once GD starts...") {
+        alert("Session Ended. No significant speech detected for analysis.");
+        window.location.href = "dashboard.php";
+        return; 
     }
-  });
 
-  // user disconnected
-  socket.on("user-disconnected", (id) => {
-    console.log("user-disconnected", id);
-    if (peers[id]) {
-      peers[id].close();
-      delete peers[id];
+    document.getElementById("feedback-area").style.display = 'block';
+    document.getElementById("ai-tips").innerText = "Analyzing your speech... Please wait.";
+
+    // AI Prompt
+    const prompt = `
+    You are an expert communication coach analyzing a student's speech in a Group Discussion.
+    
+    Context:
+    - Topic: '${TOPIC}'
+    - The Input Text below is a **raw transcription from speech-to-text**.
+    - It implies the text has **NO punctuation**, no capitalization, and may contain filler words or minor transcription errors.
+    
+    Input Text:
+    "${speechText}"
+    
+    Your Task:
+    1. **Reconstruct:** intelligently add punctuation and capitalization to the raw text for the 'corrected_text'.
+    2. **Refine:** Create a 'polite_text' version that is more professional, structured, and formal suitable for a corporate interview.
+    3. **Evaluate:** Rate the grammar and sentiment (0-100) based on the clarity of the speech.
+    
+    Output Format:
+    Return purely valid JSON (no markdown, no backticks) with this structure:
+    {
+        "original_text": "the raw input text",
+        "corrected_text": "Grammatically correct version with proper punctuation.",
+        "polite_text": "Professional and formal version of the speech.",
+        "grammar_score": number 0-100,
+        "sentiment_score": number 0-100,
+        "improvement_tips": ["Specific tip 1", "Specific tip 2"]
+    }`;
+
+    try {
+        const model = ai.getGenerativeModel({ model: "gemini-2.5-flash-lite" });
+        const result = await model.generateContent(prompt);
+        let text = await result.response.text();
+        
+        // Clean JSON
+        text = text.replace(/```json/g, "").replace(/```/g, "").trim();
+        console.log("AI Output:", text); 
+        
+        const data = JSON.parse(text);
+
+        // Display results
+        document.getElementById("disp-original").innerText = data.original_text || speechText;
+        document.getElementById("disp-corrected").innerText = data.corrected_text;
+        document.getElementById("disp-polite").innerText = data.polite_text;
+        document.getElementById("grammar-score").innerText = data.grammar_score;
+        document.getElementById("sentiment-score").innerText = data.sentiment_score;
+        
+        let tipsHtml = "<ul>";
+        (data.improvement_tips || []).forEach(t => tipsHtml += `<li>${t}</li>`);
+        tipsHtml += "</ul>";
+        document.getElementById("ai-tips").innerHTML = tipsHtml;
+
+        // Save
+        await fetch("save_feedback.php", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+                topic: TOPIC,
+                original_text: speechText,
+                corrected_text: data.corrected_text,
+                polite_text: data.polite_text,
+                grammar_score: data.grammar_score,
+                sentiment_score: data.sentiment_score,
+                improvement_tips: data.improvement_tips
+            })
+        });
+
+    } catch (e) {
+        console.error(e);
+        alert("Analysis failed. Error: " + e.message);
     }
-    // remove remote video
-    const v = remoteVideos[id];
-    if (v && v.parentNode) v.parentNode.removeChild(v);
-  });
-
-  // Start speech recognition (same as before)
-  window.SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-  recognition = new SpeechRecognition();
-  recognition.lang = "en-US";
-  recognition.interimResults = true;
-  recognition.continuous = true;
-
-  recognition.onresult = (e) => {
-    let interim = '';
-    for (let i = e.resultIndex; i < e.results.length; ++i) {
-      if (e.results[i].isFinal) finalTranscript += e.results[i][0].transcript + ' ';
-      else interim += e.results[i][0].transcript;
-    }
-    transcriptBox.innerHTML = highlightText(finalTranscript + interim);
-  };
-  recognition.start();
 });
 
-// Stop GD / End session (send transcript to Gemini as before)
-stopBtn.addEventListener('click', async () => {
-  stopBtn.disabled = true;
-  startBtn.disabled = false;
-
-  if (recognition) recognition.stop();
-  if (localStream) localStream.getTracks().forEach(t => t.stop());
-  // close peer connections
-  Object.values(peers).forEach(pc => pc.close());
-  // disconnect signaling socket
-  if (socket) {
-    socket.emit("leave-room", ""); // optional
-    socket.disconnect();
-    socket = null;
-  }
-
-  // clear video grid
-  document.getElementById('video-grid').innerHTML = '';
-
-  const gdText = finalTranscript.trim();
-  if (!gdText) return alert("No speech detected!");
-
-  // Build prompt (same as before)
-  const prompt = `
-You are an AI language coach. Analyze this transcript:
-
-${gdText}
-
-Return ONLY JSON (no explanations, no markdown):
-{
-  "original_text": "original transcript",
-  "corrected_text": "grammar corrected transcript",
-  "polite_text": "polite professional rewrite",
-  "grammar_score": number 0-100,
-  "sentiment_score": number 0-100,
-  "improvement_tips": ["tip1", "tip2", "tip3"]
-}`;
-
-  try {
-    const model = ai.getGenerativeModel({ model: "gemini-2.0-flash" });
-    const result = await model.generateContent(prompt);
-    let reply = result.response.text();
-    reply = reply.replace(/```json|```/g, "").trim();
-    const data = JSON.parse(reply);
-
-    // Show feedback (same display)
-    document.getElementById("feedback-box").style.display = "block";
-    document.getElementById("grammar-score").innerText = data.grammar_score;
-    document.getElementById("sentiment-score").innerText = data.sentiment_score;
-    document.getElementById("speaking-time").innerText = Math.round(gdText.length / 5);
-    document.getElementById("original-text").innerText = data.original_text;
-    document.getElementById("corrected-text").innerText = data.corrected_text;
-    document.getElementById("polite-text").innerText = data.polite_text;
-
-    const tipsList = document.getElementById("improvement-tips");
-    tipsList.innerHTML = "";
-    (data.improvement_tips || []).forEach(tip => {
-      const li = document.createElement("li");
-      li.innerText = tip;
-      tipsList.appendChild(li);
-    });
-
-    // Save feedback to your PHP save endpoint (same payload as previous)
-    await fetch("save_feedback.php", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        topic: "<?php echo addslashes($gd_topic); ?>",
-        original_text: data.original_text,
-        corrected_text: data.corrected_text,
-        polite_text: data.polite_text,
-        grammar_score: data.grammar_score,
-        sentiment_score: data.sentiment_score,
-        improvement_tips: data.improvement_tips
-      })
-    });
-
-  } catch (err) {
-    console.error("Gemini Error:", err);
-    alert("Failed to analyze feedback.");
-  }
-});
+function leaveRoom() {
+    if (navigator.sendBeacon) {
+        let data = new FormData();
+        data.append('room_id', ROOM_DB_ID);
+        navigator.sendBeacon('leave_room.php', data);
+    }
+}
 </script>
 </body>
 </html>

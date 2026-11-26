@@ -1,19 +1,24 @@
-//It works in online...
-
+// server.js
 import express from "express";
-import { createServer } from "http";
+import http from "http";
 import { Server } from "socket.io";
 
 const app = express();
-const server = createServer(app);
+const server = http.createServer(app);
+
 const io = new Server(server, {
-  cors: { origin: "*" }
+  cors: { origin: "*" } // allow connections from any origin (for demo)
 });
 
-io.on("connection", socket => {
-  console.log("User connected:", socket.id);
+io.on("connection", (socket) => {
+  console.log("Socket connected:", socket.id);
+  // Add this inside the connection block
+  socket.on("start-signal", (roomId) => {
+      console.log(`GD Started in room ${roomId}`);
+      io.to(roomId).emit("start-timer"); // Broadcast to everyone in room
+  });
 
-  socket.on("join-room", roomId => {
+  socket.on("join-room", (roomId) => {
     socket.join(roomId);
     socket.to(roomId).emit("user-connected", socket.id);
 
@@ -27,10 +32,16 @@ io.on("connection", socket => {
       io.to(toId).emit("candidate", candidate, socket.id);
     });
 
+    socket.on("leave-room", () => {
+      socket.leave(roomId);
+      socket.to(roomId).emit("user-disconnected", socket.id);
+    });
+
     socket.on("disconnect", () => {
       socket.to(roomId).emit("user-disconnected", socket.id);
     });
   });
 });
 
-server.listen(3000, () => console.log("🚀 Signaling server running on port 3000"));
+const PORT = process.env.PORT || 3000;
+server.listen(PORT, () => console.log(`Signaling server running on port ${PORT}`));

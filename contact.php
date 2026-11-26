@@ -1,51 +1,34 @@
-<!DOCTYPE html>
-<html lang="en">
+<?php
+session_start();
+include "connection.php"; // Make sure your DB connection file is correct
 
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Contact Form</title>
-    <link rel="stylesheet" href="css/style1.css">
-</head>
+if (isset($_POST['submit'])) {
+    // 1. Get and sanitize input data
+    $name = mysqli_real_escape_string($conn, $_POST['name']);
+    $email = mysqli_real_escape_string($conn, $_POST['email']);
+    $subject = mysqli_real_escape_string($conn, $_POST['subject']);
+    $message = mysqli_real_escape_string($conn, $_POST['message']);
 
-<body>
-    <div class="container">
-        <div class="form-box box">
+    // 2. Insert into Database
+    $sql = "INSERT INTO contact_messages (name, email, subject, message) 
+            VALUES ('$name', '$email', '$subject', '$message')";
 
-            <?php
-
-            include "connection.php";
-
-            if (isset($_POST['submit'])) {
-                $name = $_POST['name'];
-                $email = $_POST['email'];
-                $subject = $_POST['subject'];
-                $message = $_POST['message'];
-
-
-                $query = "INSERT INTO contact(name,email,subject,message) VALUES('$name','$email','$subject','$message')";
-
-                $data = mysqli_query($conn, $query);
-
-                if ($data) {
-                    echo "<div class='message'>
-                    <p>Message sent successfully ✨</p>
-                    </div><br>";
-
-                    echo "<a href='index.php'><button class='btn'>Go Back</button></a>";
-                } else {
-                    echo "<div class='message'>
-                    <p>Message sending fail 😔</p>
-                    </div><br>";
-
-                    echo "<a href='index.php'><button class='btn'>Go Back</button></a>";
-                }
-            }
-
-            ?>
-
-        </div>
-    </div>
-</body>
-
-</html>
+    if (mysqli_query($conn, $sql)) {
+        // Success: Alert and redirect back to Home
+        echo "<script>
+                alert('Thank you! Your message has been sent successfully.');
+                window.location.href='index.php';
+              </script>";
+    } else {
+        // Error
+        echo "<script>
+                alert('Something went wrong. Please try again.');
+                window.location.href='index.php';
+              </script>";
+    }
+} else {
+    // If accessed directly without submitting
+    header("Location: index.php");
+    exit();
+}
+?>

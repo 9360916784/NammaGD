@@ -9,9 +9,11 @@ if (!isset($_SESSION['id'])) {
 <html lang="en">
 <head>
   <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Confident Speaking - Namma GD</title>
   <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
   <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.2/font/bootstrap-icons.css">
   <style>
     .option-card {
       border-radius: 15px;
@@ -34,20 +36,32 @@ if (!isset($_SESSION['id'])) {
 </head>
 <body class="bg-light">
 
-<!-- Navbar -->
 <nav class="navbar navbar-expand-lg navbar-dark bg-dark">
-  <div class="container-fluid">
+  <div class="container-fluid position-relative">
+    
     <a class="navbar-brand" href="dashboard.php"><i class="fa fa-comments"></i> Namma GD</a>
-    <ul class="navbar-nav ms-auto">
-      <li class="nav-item"><a class="nav-link" href="learning.php">Learning</a></li>
-      <li class="nav-item"><a class="nav-link active" href="confident_speaking.php">Confident Speaking</a></li>
-      <li class="nav-item"><a class="nav-link" href="practice.php">Practice</a></li>
-      <li class="nav-item"><a class="nav-link" href="logout.php">Logout</a></li>
-    </ul>
+    
+    <a href="learning.php" class="btn btn-danger btn-sm shadow-sm" 
+       style="position: absolute; top: 50px; left: 10px; z-index: 1050; font-size: 0.75rem; padding: 2px 10px;">
+        <i class="bi bi-arrow-left"></i> Back
+    </a>
+
+    <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
+      <span class="navbar-toggler-icon"></span>
+    </button>
+    
+    <div class="collapse navbar-collapse" id="navbarNav">
+        <ul class="navbar-nav ms-auto">
+          <li class="nav-item"><a class="nav-link" href="dashboard.php">Dashboard</a></li>
+          <li class="nav-item"><a class="nav-link" href="learning.php">Learning</a></li>
+          <li class="nav-item"><a class="nav-link active" href="confident_speaking.php">Confident Speaking</a></li>
+          <li class="nav-item"><a class="nav-link" href="practice.php">Practice</a></li>
+          <li class="nav-item"><a class="nav-link" href="logout.php">Logout</a></li>
+        </ul>
+    </div>
   </div>
 </nav>
 
-<!-- Main Content -->
 <div class="container mt-4">
   <h2 class="text-center mb-4">Tips for Confident Speaking</h2>
 
@@ -91,5 +105,6 @@ if (!isset($_SESSION['id'])) {
   <p class="mb-0">&copy; <?php echo date('Y'); ?> Namma GD | AI-Powered GD Platform</p>
 </footer>
 
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
 </body>
 </html>
