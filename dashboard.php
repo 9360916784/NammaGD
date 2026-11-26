@@ -41,6 +41,9 @@ if ($total_sessions > 1) {
     // Calculate Percentage Change
     if ($first_total > 0) {
         $improvement_rate = round((($last_total - $first_total) / $first_total) * 100, 1);
+    } elseif ($total_sessions > 0 && $first_total == 0) {
+        // If first session had 0 score but user has sessions, show neutral rate
+        $improvement_rate = 0;
     }
 
     // Determine Color and Sign

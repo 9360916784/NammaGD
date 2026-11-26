@@ -8,28 +8,34 @@ if (!isset($_SESSION['id'])) {
 }
 
 $user_id = $_SESSION['id'];
-$room_id = 0;
+$room_id = null;
 $gd_topic = "";
 $is_host = false;
 
 // 1. CHECK IF USER IS ALREADY IN A SESSION
 if (isset($_SESSION['current_room_id'])) {
     $room_id = $_SESSION['current_room_id'];
-    $check_sql = "SELECT topic, host_id FROM active_gd_rooms WHERE id = $room_id AND status='active'";
-    $check_res = mysqli_query($conn, $check_sql);
+    // Validate room still exists and is active using prepared statement
+    $check_sql = "SELECT topic, host_id, participants FROM active_gd_rooms WHERE id = ? AND status='active'";
+    $check_stmt = $conn->prepare($check_sql);
+    $check_stmt->bind_param("i", $room_id);
+    $check_stmt->execute();
+    $check_res = $check_stmt->get_result();
     
-    if (mysqli_num_rows($check_res) > 0) {
-        $row = mysqli_fetch_assoc($check_res);
+    if ($check_res->num_rows > 0) {
+        $row = $check_res->fetch_assoc();
         $gd_topic = $row['topic'];
         // Check if current user is the host
         if($row['host_id'] == $user_id) $is_host = true;
     } else {
+        // Room no longer active - clear session
         unset($_SESSION['current_room_id']);
+        $room_id = null;
     }
 }
 
 // 2. ASSIGN NEW ROOM IF NOT IN ONE
-if (!isset($_SESSION['current_room_id'])) {
+if (!isset($_SESSION['current_room_id']) || $room_id === null) {
     // Try to join existing room
     $find_sql = "SELECT * FROM active_gd_rooms WHERE participants < 6 AND status='active' ORDER BY created_at DESC LIMIT 1";
     $find_res = mysqli_query($conn, $find_sql);
@@ -38,11 +44,16 @@ if (!isset($_SESSION['current_room_id'])) {
         $room = mysqli_fetch_assoc($find_res);
         $room_id = $room['id'];
         $gd_topic = $room['topic'];
-        mysqli_query($conn, "UPDATE active_gd_rooms SET participants = participants + 1 WHERE id = $room_id");
+        // Use prepared statement to prevent SQL injection
+        $update_stmt = $conn->prepare("UPDATE active_gd_rooms SET participants = participants + 1 WHERE id = ?");
+        $update_stmt->bind_param("i", $room_id);
+        $update_stmt->execute();
         
         // Failsafe: If room has no host, make this user host
         if(empty($room['host_id'])) {
-            mysqli_query($conn, "UPDATE active_gd_rooms SET host_id = $user_id WHERE id = $room_id");
+            $host_update = $conn->prepare("UPDATE active_gd_rooms SET host_id = ? WHERE id = ?");
+            $host_update->bind_param("ii", $user_id, $room_id);
+            $host_update->execute();
             $is_host = true;
         }
     } else {
@@ -125,6 +136,7 @@ if (!isset($_SESSION['current_room_id'])) {
     #timer-badge { font-size: 1.2rem; font-weight: bold; min-width: 100px; text-align: center; }
   </style>
 </head>
+
 <body>
 
 <nav class="navbar navbar-expand-lg navbar-dark bg-dark">
@@ -134,11 +146,11 @@ if (!isset($_SESSION['current_room_id'])) {
     <div class="ms-auto text-white d-flex align-items-center">
         <span id="timer-badge" class="badge bg-warning text-dark me-3" style="display:none;">15:00</span>
 
-        <span class="me-3 d-none d-md-block">
-            Room ID: <strong><?php echo $room_id; ?></strong> | 
+        <span class="me-3">
+            Room ID: <strong><?php echo $room_id !== null ? $room_id : 'Not joined'; ?></strong> | 
             Topic: <strong><?php echo htmlspecialchars($gd_topic); ?></strong>
         </span>
-        <a href="dashboard.php" class="btn btn-danger btn-sm fw-bold">
+        <a href="dashboard.php" class="btn btn-danger btn-sm fw-bold" style="display:<?php echo ($room_id === null) ? 'inline-block' : 'none'; ?>">
             <i class="bi bi-box-arrow-left"></i> Exit
         </a>
     </div>
@@ -165,7 +177,6 @@ if (!isset($_SESSION['current_room_id'])) {
 
             <button id="leave-btn" class="btn btn-danger px-4 btn-lg" style="display:none;"><i class="bi bi-stop-circle"></i> End Session & Get Feedback</button>
         </div>
-    </div>
 
     <div class="col-lg-3">
         <div class="card shadow-sm h-100">
@@ -495,5 +506,6 @@ function leaveRoom() {
     }
 }
 </script>
+
 </body>
 </html>

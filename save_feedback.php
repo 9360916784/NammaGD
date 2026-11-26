@@ -19,13 +19,16 @@ $grammar_score = (int)$data['grammar_score'];
 $sentiment_score = (int)$data['sentiment_score'];
 $tips_str = mysqli_real_escape_string($conn, is_array($data['improvement_tips']) ? implode("\n", $data['improvement_tips']) : $data['improvement_tips']);
 
-$sql = "INSERT INTO gd_feedback (user_id, topic, transcript, grammar_score, sentiment_score, speaking_time, improvement_tips)
-        VALUES ($user_id, '$topic', '$original\n\nCorrected: $corrected\n\nPolite: $polite',
-        $grammar_score, $sentiment_score, LENGTH('$original')/5, '$tips_str')";
+// Use prepared statement to prevent SQL injection
+$stmt = $conn->prepare("INSERT INTO gd_feedback (user_id, topic, transcript, grammar_score, sentiment_score, speaking_time, improvement_tips) VALUES (?, ?, ?, ?, ?, ?, ?)");
 
-if (mysqli_query($conn, $sql)) {
+$transcript = "$original\n\nCorrected: $corrected\n\nPolite: $polite";
+
+$stmt->bind_param("issiii", $user_id, $topic, $transcript, $grammar_score, $sentiment_score, strlen($original)/5, $tips_str);
+
+if ($stmt->execute()) {
     echo json_encode(["status" => "success"]);
 } else {
-    echo json_encode(["status" => "error", "message" => mysqli_error($conn)]);
+    echo json_encode(["status" => "error", "message" => $stmt->error]);
 }
 ?>

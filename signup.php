@@ -31,8 +31,11 @@
             $pass = $_POST['password'];
             $cpass = $_POST['cpass'];
 
-            $check = "select * from users where email='{$email}'";
-            $res = mysqli_query($conn, $check);
+            $check = "select * from users where email=?";
+            $stmt = $conn->prepare($check);
+            $stmt->bind_param("s", $email);
+            $stmt->execute();
+            $res = $stmt->get_result();
 
             $passwd = password_hash($pass, PASSWORD_DEFAULT);
             $key = bin2hex(random_bytes(12));
@@ -48,11 +51,10 @@
 
               if ($pass === $cpass) {
 
-                // Insert with default role = student
-                $sql = "INSERT INTO users(username, email, password, role) 
-                        VALUES('$name', '$email', '$passwd', 'student')";
-
-                $result = mysqli_query($conn, $sql);
+                // Insert with default role = student - using prepared statement
+                $stmt = $conn->prepare("INSERT INTO users(username, email, password, role) VALUES(?, ?, ?, 'student')");
+                $stmt->bind_param("sss", $name, $email, $passwd);
+                $result = $stmt->execute();
 
                 if ($result) {
 
@@ -128,7 +130,7 @@
   <script>
     const toggle = document.querySelector(".toggle"),
       input = document.querySelectorAll(".password"); // Changed to selectAll to handle both password fields if needed
-      
+    
     toggle.addEventListener("click", () => {
       // Fix: Loop through both password fields to toggle visibility
       input.forEach(field => {
@@ -146,6 +148,7 @@
       }
     })
   </script>
+
 </body>
 
 </html>
