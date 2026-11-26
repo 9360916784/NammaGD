@@ -31,7 +31,7 @@
             $pass = $_POST['password'];
             $cpass = $_POST['cpass'];
 
-            $check = "select * from users where email='{$email}'";
+            $check = "select * from users where email='".mysqli_real_escape_string($conn, $email)."'";
             $res = mysqli_query($conn, $check);
 
             $passwd = password_hash($pass, PASSWORD_DEFAULT);

@@ -34,6 +34,10 @@ if (!isset($_SESSION['username'])) {
                 $password = $_POST['password'];
 
                 $id = $_SESSION['id'];
+                $username = mysqli_real_escape_string($conn, $username);
+                $email = mysqli_real_escape_string($conn, $email);
+                $password = mysqli_real_escape_string($conn, $password);
+                $id = mysqli_real_escape_string($conn, $id);
                 $edit_query = mysqli_query($conn, "UPDATE users SET username='$username', email='$email', password='$password' WHERE id = $id");
 
                 if ($edit_query) {

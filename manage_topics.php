@@ -10,6 +10,7 @@ if (!isset($_SESSION['role']) || $_SESSION['role'] != 'admin') {
 // Add topic
 if (isset($_POST['add_topic'])) {
     $topic = mysqli_real_escape_string($conn, $_POST['topic']);
+    $topic = mysqli_real_escape_string($conn, $topic);
     if (!empty($topic)) {
         mysqli_query($conn, "INSERT INTO gd_topics (topic) VALUES ('$topic')");
     }
@@ -18,6 +19,7 @@ if (isset($_POST['add_topic'])) {
 // Delete topic
 if (isset($_GET['delete'])) {
     $id = intval($_GET['delete']);
+    $id = mysqli_real_escape_string($conn, $id);
     mysqli_query($conn, "DELETE FROM gd_topics WHERE id=$id");
 }
 

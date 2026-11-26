@@ -26,6 +26,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['add_video'])) {
 // --- Delete Video ---
 if (isset($_GET['delete'])) {
     $id = intval($_GET['delete']);
+    $id = mysqli_real_escape_string($conn, $id);
     mysqli_query($conn, "DELETE FROM gd_videos WHERE id = $id");
     header("Location: manage_videos.php");
     exit();

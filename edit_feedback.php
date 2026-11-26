@@ -33,6 +33,7 @@ if (isset($_POST['update'])) {
     $sentiment = intval($_POST['sentiment_score']);
     $speaking_time = intval($_POST['speaking_time']);
     $tips = mysqli_real_escape_string($conn, $_POST['improvement_tips']);
+    $id = intval($_GET['id']);
 
     $update_sql = "UPDATE gd_feedback 
                    SET grammar_score='$grammar',
