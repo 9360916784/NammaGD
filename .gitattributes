@@ -1,0 +1,29 @@
+# Set default line ending behavior for this repository
+* text=auto
+
+# PHP files - normalize to LF on commit
+*.php text
+
+# Ignore whitespace changes in PHP files
+*.php whitespace-fix
+
+# Don't normalize these - keep as-is
+*.html text eol=lf
+*.css text eol=lf
+*.js text eol=lf
+*.json text eol=lf
+
+# Binary files - don't touch
+*.png binary
+*.jpg binary
+*.gif binary
+*.pdf binary
+*.zip binary
+*.mov binary
+*.mp4 binary
+
+# Config files
+*.yaml text eol=lf
+*.yml text eol=lf
+*.toml text eol=lf
+*.conf text eol=lf
